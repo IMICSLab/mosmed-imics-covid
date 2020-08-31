@@ -24,6 +24,7 @@ from iMICSdset_utils.coco import COCO
 # import matplotlib.pyplot as plt
 import nibabel as nib
 import nrrd
+from scipy.ndimage import zoom
 
 
 def read_nfti_img(path):
@@ -101,7 +102,7 @@ class iMICSDataset(Dataset):
                 if img.shape != msk.shape:
                     print("Error! Image and Mask do not have the same size!", img_list[j].strip(".nii.gz"))
                     print("ImgSize:", img.shape, "MskSize:", msk.shape)
-                    msk, _ = read_nrrd_img(os.path.join(self.pr_dir, "Resized_Masks", msk_list[j]))
+                    msk, _ = read_nrrd_img(os.path.join(self.pr_dir, "Resized_Mks", msk_list[j]))
                     if img.shape != msk.shape:
                         print("Still Image and Mask do not have the same size!")
                     else:
@@ -109,47 +110,57 @@ class iMICSDataset(Dataset):
                     # continue
                 img_size_holder.append(img.shape)
                 msk_size_holder.append(msk.shape)
-                # if img.shape != self.target_image_size:
-                #     tmp = cv2.resize(img, self.target_image_size)
-                #     img = tmp
-                #     tmp2 = cv2.resize(msk, self.target_image_size)
-                #     msk = tmp2
+                if img.shape != self.target_image_size:
+                    #print("image size and target size before resize:", img.shape, self.target_image_size)
+                    sc1 = self.target_image_size[0]/img.shape[0]
+                    sc2 = self.target_image_size[1]/img.shape[1]
+                    sc3 = self.target_image_size[2]/img.shape[2]
+                    sc = (sc1, sc2, sc3)
+                    tmp = zoom(img, sc)
+                    img = tmp
+                    tmp2 = zoom(msk, sc)
+                    msk = tmp2
+                    #print("image size and target size after resize:", img.shape, self.target_image_size)
                 img = img.reshape(1, img.shape[0],img.shape[1],img.shape[2])
                 msk = msk.reshape(1, msk.shape[0],msk.shape[1], msk.shape[2])
                 img_holder.append(img)
                 msk_holder.append(msk)
                 lbl_holder.append(group)
                 pat_id_holder.append(img_list[j].strip(".nii.gz"))
-        #self.IMG = np.concatenate(img_holder, axis=0)
-        #self.MSK = np.concatenate(msk_holder, axis=0)
+        self.IMG = np.concatenate(img_holder, axis=0)
+        self.MSK = np.concatenate(msk_holder, axis=0)
         self.ImgSize = img_size_holder
         self.MskSize = msk_size_holder
         self.PatID = pat_id_holder
         self.Lbl = lbl_holder
 
-    #     if self.shuffle is True:
-    #         p = np.random.permutation(self.IMG.shape[0])
-    #         self.IMG = self.IMG[p]
-    #         self.MSK = self.MSK[p]
-    #         self.ANT = self.ANT[p]
+        if self.shuffle is True:
+            p = np.random.permutation(self.IMG.shape[0])
+            self.IMG = self.IMG[p]
+            self.MSK = self.MSK[p]
+            self.Lbl = self.Lbl[p]
+            self.ImgSize = self.ImgSize[p]
+            self.MskSize = self.MskSize[p]
+            self.PatID = self.PatID[p]
 
-    # def __len__(self):
-    #     return (self.IMG.shape[0])
+    def __len__(self):
+        return (self.IMG.shape[0])
 
-    # def __getitem__(self, idx):
-    #     img = self.IMG[idx, :, :, :]
-    #     msk = self.MSK[idx, :, :]
-    #     ant = self.ANT[idx]
-    #     sample = {'image': img, 'mask': msk, 'caption': ant}
-    #     return sample
+    def __getitem__(self, idx):
+        img = self.IMG[idx, :, :, :]
+        msk = self.MSK[idx, :, :, :]
+        lbl = self.Lbl[idx]
+        pid = self.PatID[idx]
+        sample = {'image': img, 'mask': msk, 'label': lbl, 'PatID':pid}
+        return sample
 
 
 if __name__ == "__main__":
     pr_dir = "../studies"
     cohort = "CT-4" # or CT-1, or CT-2, or CT-3, or CT-4 or all
     # using max(set(dset.ImgSize), key=dset.ImgSize.count) = 512,512,45
-    target_image_size = (512,512,45)
-    dset = iMICSDataset(pr_dir, target_image_size=target_image_size, cohort=cohort)
+    target_image_size = (256,256,32)
+    dset = iMICSDataset(pr_dir, target_image_size=target_image_size, cohort='all')
 
     # plt.figure()
     # plt.imshow(dset.IMG[200])
